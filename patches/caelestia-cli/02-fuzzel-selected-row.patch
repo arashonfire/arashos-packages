@@ -1,0 +1,23 @@
+Fuzzel: a solid selected row, with text and matches that read on it
+
+The selected row was the primary colour at 53% over the background, with
+the normal text colour and the tertiary colour for the matched letters. On
+ArashOS's themes that was 2.4:1 for the matches (Kaghaz) and 3.9:1 for the
+text (Lajvard). A solid primary row with onPrimary text and primaryContainer
+matches: at least 6.4:1 for the text and 5.0:1 for the matches, and the row
+stands out from the background (5.4:1 or more).
+
+--- a/src/caelestia/data/templates/fuzzel.ini
++++ b/src/caelestia/data/templates/fuzzel.ini
+@@ -34,8 +34,8 @@
+ placeholder={{ $outline }}ff
+ input={{ $onSurface }}ff
+ match={{ $tertiary }}ff
+-selection={{ $primary }}87
+-selection-text={{ $onSurface }}ff
+-selection-match={{ $tertiary }}ff
++selection={{ $primary }}ff
++selection-text={{ $onPrimary }}ff
++selection-match={{ $primaryContainer }}ff
+ counter={{ $outline }}ff
+ border={{ $primary }}77

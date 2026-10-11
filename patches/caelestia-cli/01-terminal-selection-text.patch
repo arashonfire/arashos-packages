@@ -1,0 +1,26 @@
+Terminals: set the selected text colour too, not just the selection
+
+The scheme sets the selection background (OSC 17, secondary) but not the
+text drawn on it, so kitty kept its configured selection_foreground, a dark
+ink. On a light ArashOS theme the selection is a deep teal or blue, and that
+ink on it is 2.9:1. Send onSecondary as the selection foreground (OSC 19,
+which kitty and xterm support): 6.5:1 on Kaghaz, 7.8:1 on Lajvard.
+
+--- a/src/caelestia/utils/theme.py
++++ b/src/caelestia/utils/theme.py
+@@ -88,6 +88,7 @@
+     11: background
+     12: cursor
+     17: selection
++    19: selected text
+     4:
+         0 - 7: normal colours
+         8 - 15: bright colours
+@@ -98,6 +99,7 @@
+         + hex_to_ansi(colours["surface"], 11)
+         + hex_to_ansi(colours["secondary"], 12)
+         + hex_to_ansi(colours["secondary"], 17)
++        + hex_to_ansi(colours["onSecondary"], 19)
+         + hex_to_ansi(colours["term0"], 4, 0)
+         + hex_to_ansi(colours["term1"], 4, 1)
+         + hex_to_ansi(colours["term2"], 4, 2)

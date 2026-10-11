@@ -1,0 +1,702 @@
+Bar: a Tailscale status icon and popout
+
+Tailscale's mark in the bar's status icons (taking no space until Tailscale
+is installed), and a popout like the network one: on and off, this computer
+and the tailnet's online devices (click one to copy its IP), switching
+between accounts (Tailscale and a Headscale server), and exit nodes. Signing
+in runs ArashOS's setup in a terminal (arashos-install-app --setup
+tailscale). It reads the status every 30 s while connected, every 2 min
+otherwise, and not at all while Tailscale isn't installed: arashos-install-app
+tells it (qs -c caelestia ipc call tailscale refresh), with a check every
+10 min besides. Modelled on Omarchy's Tailscale bar widget (MIT).
+
+--- a/modules/bar/components/status/TailscaleStatus.qml
++++ b/modules/bar/components/status/TailscaleStatus.qml
+@@ -0,0 +1,57 @@
++import QtQuick
++import Caelestia.Config
++import qs.components
++import qs.services
++
++// Tailscale's mark, a 3×3 grid of dots, drawn rather than loaded from SVG so it
++// stays crisp at bar size (as Omarchy's widget does). Connected: the mark's
++// dots full and the rest faded. Off, signed out or not running: the whole
++// grid evenly dimmed (still 3:1 on the light themes).
++// Takes no space while Tailscale isn't installed.
++Item {
++    id: root
++
++    required property color colour
++
++    readonly property real dot: Math.round(sizer.implicitWidth * 0.2)
++    readonly property real gap: Math.round(sizer.implicitWidth * 0.08)
++
++    implicitWidth: Tailscale.installed ? sizer.implicitWidth : 0
++    implicitHeight: Tailscale.installed ? sizer.implicitHeight : 0
++    visible: Tailscale.installed
++
++    // The size of the bar's other status icons
++    MaterialIcon {
++        id: sizer
++
++        visible: false
++        text: "lan"
++    }
++
++    Grid {
++        anchors.centerIn: parent
++        columns: 3
++        spacing: root.gap
++
++        Repeater {
++            // The mark: the middle row and the bottom middle dot
++            model: [false, false, false, true, true, true, false, true, false]
++
++            Rectangle {
++                required property bool modelData
++
++                implicitWidth: root.dot
++                implicitHeight: root.dot
++                radius: root.dot / 2
++                color: root.colour
++                opacity: Tailscale.running ? (modelData ? 1 : 0.3) : 0.55
++
++                Behavior on opacity {
++                    Anim {
++                        type: Anim.DefaultEffects
++                    }
++                }
++            }
++        }
++    }
++}
+--- a/modules/bar/components/StatusIcons.qml
++++ b/modules/bar/components/StatusIcons.qml
+@@ -37,6 +37,8 @@
+     function collapsed(entry: var): bool {
+         if (entry.id === "lockStatus")
+             return !Hypr.capsLock && !Hypr.numLock;
++        if (entry.id === "tailscale")
++            return !Tailscale.installed;
+         return false;
+     }
+ 
+@@ -126,6 +128,14 @@
+                         }
+                     }
+                 }
++                DelegateChoice {
++                    roleValue: "tailscale"
++                    delegate: EntryWrapper {
++                        TailscaleStatus {
++                            colour: root.colour
++                        }
++                    }
++                }
+                 DelegateChoice {
+                     roleValue: "bluetooth"
+                     delegate: EntryWrapper {
+--- a/modules/bar/popouts/Content.qml
++++ b/modules/bar/popouts/Content.qml
+@@ -96,6 +96,11 @@
+         }
+ 
+         Popout {
++            name: "tailscale"
++            sourceComponent: TailscalePopout {}
++        }
++
++        Popout {
+             name: "bluetooth"
+             sourceComponent: Bluetooth {
+                 popouts: root.popouts
+--- a/modules/bar/popouts/TailscalePopout.qml
++++ b/modules/bar/popouts/TailscalePopout.qml
+@@ -0,0 +1,285 @@
++pragma ComponentBehavior: Bound
++
++import QtQuick
++import QtQuick.Layouts
++import Quickshell
++import Caelestia.Config
++import Caelestia.I18n
++import qs.components
++import qs.components.controls
++import qs.services
++
++// Tailscale (ArashOS): on and off, this computer and the tailnet's devices
++// (click one to copy its IP), accounts and exit nodes.
++ColumnLayout {
++    id: root
++
++    width: Tokens.sizes.bar.networkWidth
++    spacing: Tokens.spacing.small
++
++    // Keep it current while it's open (the popout is unloaded when closed).
++    Timer {
++        running: true
++        repeat: true
++        triggeredOnStart: true
++        interval: 5000
++        onTriggered: Tailscale.refresh(true)
++    }
++
++    StyledText {
++        Layout.topMargin: Tokens.padding.medium
++        Layout.rightMargin: Tokens.padding.extraSmall
++        text: "Tailscale"
++        font: Tokens.font.body.builders.medium.weight(Font.Medium).build()
++    }
++
++    RowLayout {
++        visible: Tailscale.daemonRunning && !Tailscale.needsLogin
++        Layout.fillWidth: true
++        Layout.rightMargin: Tokens.padding.extraSmall
++        spacing: Tokens.spacing.medium
++
++        StyledText {
++            Layout.fillWidth: true
++            text: Tr.trCtx("Connected", "toggle label")
++        }
++
++        StyledSwitch {
++            id: onOff
++
++            enabled: !Tailscale.busy
++            onToggled: Tailscale.setUp(checked)
++        }
++
++        // Clicking breaks a plain checked binding; this keeps the switch on
++        // Tailscale's real state, also when turning it on fails.
++        Binding {
++            target: onOff
++            property: "checked"
++            value: Tailscale.running
++        }
++    }
++
++    StyledText {
++        Layout.fillWidth: true
++        Layout.rightMargin: Tokens.padding.extraSmall
++        text: {
++            if (!Tailscale.daemonRunning)
++                return Tr.tr("Tailscale isn't running on this computer.");
++            if (Tailscale.needsLogin)
++                return Tr.tr("Signed out. Sign in to connect your devices.");
++            if (!Tailscale.running)
++                return Tr.tr("Off. Turn it on to reach your devices.");
++            const exit = Tailscale.peers.find(p => p.exitNode);
++            if (exit)
++                return Tr.tr("%1, through %2").arg(Tailscale.tailnet).arg(exit.name);
++            return Tailscale.tailnet;
++        }
++        visible: text !== ""
++        wrapMode: Text.WordWrap
++        color: Colours.palette.m3onSurfaceVariant
++        font: Tokens.font.body.small
++    }
++
++    Device {
++        visible: Tailscale.running
++        icon: "computer"
++        name: Tr.tr("%1 (this computer)").arg(Tailscale.selfName)
++        ip: Tailscale.selfIp
++    }
++
++    // Accounts: only worth showing when there is more than one
++    StyledText {
++        visible: Tailscale.running && Tailscale.accounts.length > 1
++        Layout.topMargin: Tokens.spacing.small
++        text: Tr.tr("Accounts")
++        color: Colours.palette.m3onSurfaceVariant
++        font: Tokens.font.body.small
++    }
++
++    Repeater {
++        model: ScriptModel {
++            values: Tailscale.running && Tailscale.accounts.length > 1 ? Tailscale.accounts : []
++        }
++
++        Entry {
++            id: account
++
++            required property var modelData
++
++            icon: modelData.selected ? "check_circle" : "account_circle"
++            name: modelData.label
++            active: modelData.selected
++            onClicked: {
++                if (!account.modelData.selected)
++                    Tailscale.switchAccount(account.modelData.id);
++            }
++        }
++    }
++
++    StyledText {
++        visible: Tailscale.running
++        Layout.topMargin: Tokens.spacing.small
++        text: {
++            const online = Tr.trN("%n device online", "%n devices online", Tailscale.peers.length);
++            if (Tailscale.offlineCount > 0)
++                // TRANSLATORS: %1 = "N devices online", %2 = how many are offline
++                return Tr.tr("%1, %2 offline").arg(online).arg(Tailscale.offlineCount);
++            return online;
++        }
++        color: Colours.palette.m3onSurfaceVariant
++        font: Tokens.font.body.small
++    }
++
++    Repeater {
++        model: ScriptModel {
++            values: Tailscale.running ? Tailscale.peers.slice(0, 8) : []
++        }
++
++        Device {
++            id: peer
++
++            required property var modelData
++
++            icon: {
++                const os = modelData.os;
++                if (os === "android" || os === "ios")
++                    return "smartphone";
++                if (os === "macos")
++                    return "laptop_mac";
++                if (os === "windows")
++                    return "desktop_windows";
++                return "computer";
++            }
++            name: modelData.name
++            ip: modelData.ip
++            exitNodeOption: modelData.exitNodeOption
++            exitNode: modelData.exitNode
++            onExitNodeClicked: Tailscale.setExitNode(peer.modelData.exitNode ? null : peer.modelData)
++        }
++    }
++
++    StyledText {
++        visible: Tailscale.running && Tailscale.peers.length > 8
++        Layout.leftMargin: Tokens.padding.small
++        text: Tr.tr("+ %1 more").arg(Tailscale.peers.length - 8)
++        color: Colours.palette.m3onSurfaceVariant
++        font: Tokens.font.body.small
++    }
++
++    StyledText {
++        visible: Tailscale.error !== ""
++        Layout.fillWidth: true
++        Layout.rightMargin: Tokens.padding.extraSmall
++        text: Tailscale.error
++        wrapMode: Text.WordWrap
++        color: Colours.palette.m3error
++        font: Tokens.font.body.small
++    }
++
++    IconTextButton {
++        visible: !Tailscale.daemonRunning || Tailscale.needsLogin
++        Layout.fillWidth: true
++        Layout.topMargin: Tokens.spacing.medium
++        inactiveColour: Colours.palette.m3primaryContainer
++        inactiveOnColour: Colours.palette.m3onPrimaryContainer
++        verticalPadding: Tokens.padding.extraSmall
++        text: Tailscale.needsLogin ? Tr.tr("Sign in") : Tr.tr("Start Tailscale")
++        icon: "login"
++
++        onClicked: Tailscale.signIn()
++    }
++
++    // A device: click to copy its IP. Exit nodes get a button to route
++    // this computer's traffic through them.
++    component Device: Entry {
++        id: device
++
++        property string ip
++        property bool exitNodeOption
++        property bool exitNode
++
++        signal exitNodeClicked
++
++        active: exitNode
++        detail: Tailscale.copied !== "" && Tailscale.copied === ip ? Tr.tr("Copied") : ip
++        onClicked: Tailscale.copy(ip)
++
++        StyledRect {
++            visible: device.exitNodeOption
++            implicitWidth: implicitHeight
++            implicitHeight: exitIcon.implicitHeight + Tokens.padding.extraSmall
++
++            radius: Tokens.rounding.full
++            color: Qt.alpha(Colours.palette.m3primary, device.exitNode ? 1 : 0)
++
++            StateLayer {
++                color: device.exitNode ? Colours.palette.m3onPrimary : Colours.palette.m3onSurface
++                disabled: Tailscale.busy
++                onClicked: device.exitNodeClicked()
++            }
++
++            MaterialIcon {
++                id: exitIcon
++
++                anchors.centerIn: parent
++                text: "public"
++                color: device.exitNode ? Colours.palette.m3onPrimary : Colours.palette.m3onSurface
++            }
++        }
++    }
++
++    component Entry: StyledRect {
++        id: row
++
++        property string icon
++        property string name
++        property string detail
++        property bool active
++        default property alias extra: content.data
++
++        signal clicked
++
++        Layout.fillWidth: true
++        implicitHeight: content.implicitHeight + Tokens.padding.small * 2
++        radius: Tokens.rounding.small
++        color: "transparent"
++
++        StateLayer {
++            disabled: Tailscale.busy
++            onClicked: row.clicked()
++        }
++
++        RowLayout {
++            id: content
++
++            anchors.left: parent.left
++            anchors.right: parent.right
++            anchors.verticalCenter: parent.verticalCenter
++            anchors.leftMargin: Tokens.padding.small
++            anchors.rightMargin: Tokens.padding.small
++            spacing: Tokens.spacing.small
++
++            MaterialIcon {
++                text: row.icon
++                color: row.active ? Colours.palette.m3primary : Colours.palette.m3onSurfaceVariant
++            }
++
++            StyledText {
++                Layout.leftMargin: Tokens.spacing.extraSmall
++                Layout.fillWidth: true
++                text: row.name
++                elide: Text.ElideRight
++                font: Tokens.font.body.builders.medium.weight(row.active ? Font.Medium : Font.Normal).build()
++                color: row.active ? Colours.palette.m3primary : Colours.palette.m3onSurface
++            }
++
++            StyledText {
++                visible: text !== ""
++                text: row.detail
++                color: Colours.palette.m3onSurfaceVariant
++                font: Tokens.font.body.small
++            }
++        }
++    }
++}
+--- a/modules/nexus/pages/panels/taskbar/BarStatusIcons.qml
++++ b/modules/nexus/pages/panels/taskbar/BarStatusIcons.qml
+@@ -14,6 +14,7 @@
+             audio: Tr.tr("Speakers"),
+             microphone: Tr.tr("Microphone"),
+             network: Tr.tr("Network"),
++            tailscale: "Tailscale",
+             bluetooth: Tr.tr("Bluetooth"),
+             battery: Tr.tr("Battery")
+         })
+--- a/plugin/src/Caelestia/Config/barconfig.hpp
++++ b/plugin/src/Caelestia/Config/barconfig.hpp
+@@ -122,6 +122,7 @@
+             LIST_ENTRY(microphone, false),
+             LIST_ENTRY(kbLayout, false),
+             LIST_ENTRY(network, true),
++            LIST_ENTRY(tailscale, true),
+             LIST_ENTRY(bluetooth, true),
+             LIST_ENTRY(battery, true),
+         }))
+--- a/services/Tailscale.qml
++++ b/services/Tailscale.qml
+@@ -0,0 +1,279 @@
++pragma Singleton
++
++import QtQuick
++import Quickshell
++import Quickshell.Io
++import Caelestia.I18n
++
++// Tailscale in the bar (ArashOS): reads `tailscale status --json`, turns
++// Tailscale on and off, switches accounts and exit nodes. Modelled on
++// Omarchy's Tailscale bar widget (MIT). Turning it on and off without sudo
++// needs the user to be tailscale's operator, which ArashOS's setup sets
++// (arashos-install-app: tailscale up --operator=$USER).
++Singleton {
++    id: root
++
++    // false until a status check finds the tailscale command
++    property bool installed: false
++    // tailscaled answered; false when the service is stopped
++    property bool daemonRunning: false
++    // Running, Stopped, NeedsLogin, Starting, NoState
++    property string backendState: ""
++    readonly property bool running: daemonRunning && backendState === "Running"
++    readonly property bool needsLogin: daemonRunning && backendState === "NeedsLogin"
++    property string tailnet: ""
++    property string selfName: ""
++    property string selfIp: ""
++    // online peers, sorted by name: {id, name, ip, os, exitNodeOption, exitNode}
++    property var peers: []
++    property int offlineCount: 0
++    // {id, label, selected}; only read while the popout is open
++    property var accounts: []
++    // the last action's error, for the popout
++    property string error: ""
++    // the IP just copied, for a moment, so the popout can say so
++    property string copied: ""
++    readonly property bool busy: actionProc.running
++    property bool statusParsed: false
++
++    function refresh(withAccounts: bool): void {
++        if (!statusProc.running)
++            statusProc.running = true;
++        if (withAccounts && running && !accountsProc.running)
++            accountsProc.running = true;
++    }
++
++    function setUp(up: bool): void {
++        run(["tailscale", up ? "up" : "down"]);
++    }
++
++    function switchAccount(id: string): void {
++        run(["tailscale", "switch", id]);
++    }
++
++    // peer: an exit node to use, or null to stop using one
++    function setExitNode(peer: var): void {
++        run(["tailscale", "set", `--exit-node=${peer ? peer.ip : ""}`]);
++    }
++
++    function copy(text: string): void {
++        if (!text)
++            return;
++        Quickshell.execDetached(["wl-copy", "--", text]);
++        copied = text;
++        copiedTimer.restart();
++    }
++
++    // Signing in asks questions (Tailscale or your own Headscale server), so it
++    // runs ArashOS's setup in a terminal. It also starts tailscaled.
++    function signIn(): void {
++        Quickshell.execDetached(["arashos-floating", "Tailscale", "arashos-install-app", "--setup", "tailscale"]);
++    }
++
++    // The last action: its exit code and stderr arrive in either order.
++    property int actionExit: -1
++    property var actionStderr: null
++
++    function run(command: list<string>): void {
++        if (actionProc.running)
++            return;
++        error = "";
++        actionExit = -1;
++        actionStderr = null;
++        actionProc.command = command;
++        actionProc.running = true;
++    }
++
++    function actionFinished(): void {
++        if (actionExit < 0 || actionStderr === null)
++            return;
++        const out = actionStderr;
++        actionStderr = null;
++        if (actionExit === 0) {
++            error = "";
++            refresh(true);
++            return;
++        }
++        // A bare `tailscale up` is refused when this computer was signed in
++        // with settings it doesn't repeat (a Headscale server, the operator).
++        // tailscale then prints the full command, which only restates the
++        // current settings: run that instead, once, if it is only plain
++        // --flag=value arguments (a quoted value would split wrongly).
++        const cmd = actionProc.command;
++        const full = out.split("\n").map(l => l.trim()).find(l => l.startsWith("tailscale up --")) ?? "";
++        const argv = full.split(/\s+/);
++        if (full && cmd.length === 2 && cmd[1] === "up" && argv.slice(2).every(a => /^--[a-z][a-z0-9-]*(=[^'"\s]*)?$/.test(a))) {
++            Qt.callLater(() => root.run(argv));
++            return;
++        }
++        const lines = out.trim().split("\n").filter(l => l.trim());
++        error = lines.length ? lines[lines.length - 1] : Tr.tr("That did not work.");
++        refresh(true);
++    }
++
++    // A peer's name: its host name, or for phones that call themselves
++    // "localhost", the first part of its tailnet DNS name.
++    function peerName(peer: var): string {
++        const host = peer.HostName ?? "";
++        if (host && host.toLowerCase() !== "localhost")
++            return host;
++        return (peer.DNSName ?? "").split(".")[0] || host || "?";
++    }
++
++    function ipv4(ips: var): string {
++        return (ips ?? []).find(ip => ip.indexOf(":") < 0) ?? "";
++    }
++
++    function parseStatus(text: string): void {
++        let data;
++        try {
++            data = JSON.parse(text);
++        } catch (e) {
++            return;
++        }
++        statusParsed = true;
++        installed = true;
++        daemonRunning = true;
++        backendState = data.BackendState ?? "";
++        tailnet = data.CurrentTailnet?.Name ?? "";
++        selfName = data.Self ? peerName(data.Self) : "";
++        selfIp = ipv4(data.Self?.TailscaleIPs ?? data.TailscaleIPs);
++
++        const online = [];
++        let offline = 0;
++        for (const [id, p] of Object.entries(data.Peer ?? {})) {
++            // Mullvad exit nodes would bury the tailnet's own devices.
++            if ((p.DNSName ?? "").endsWith(".mullvad.ts.net."))
++                continue;
++            if (!p.Online) {
++                offline++;
++                continue;
++            }
++            online.push({
++                id: id,
++                name: peerName(p),
++                ip: ipv4(p.TailscaleIPs),
++                os: (p.OS ?? "").toLowerCase(),
++                exitNodeOption: p.ExitNodeOption === true,
++                exitNode: p.ExitNode === true
++            });
++        }
++        online.sort((a, b) => a.name.localeCompare(b.name));
++        peers = online;
++        offlineCount = offline;
++    }
++
++    Process {
++        id: statusProc
++
++        // Exit 127: tailscale isn't installed. Any other failure: tailscaled
++        // isn't running.
++        command: ["sh", "-c", "command -v tailscale >/dev/null || exit 127; exec tailscale status --json"]
++        environment: ({
++                LANG: "C.UTF-8",
++                LC_ALL: "C.UTF-8"
++            })
++        stdout: StdioCollector {
++            onStreamFinished: {
++                if (text.trim())
++                    root.parseStatus(text);
++            }
++        }
++        onRunningChanged: {
++            if (running)
++                root.statusParsed = false;
++        }
++        // The output may be read before or after the exit: a status that
++        // parsed wins over the exit code.
++        onExited: exitCode => { // qmllint disable signal-handler-parameters
++            if (root.statusParsed || exitCode === 0)
++                return;
++            root.installed = exitCode !== 127;
++            root.daemonRunning = false;
++            root.backendState = "";
++            root.peers = [];
++            root.accounts = [];
++        }
++    }
++
++    Process {
++        id: accountsProc
++
++        command: ["tailscale", "switch", "--list", "--json"]
++        stdout: StdioCollector {
++            onStreamFinished: {
++                try {
++                    root.accounts = JSON.parse(text).map(a => ({
++                                id: a.id,
++                                label: a.tailnet || a.nickname || a.account || a.id,
++                                selected: a.selected === true
++                            }));
++                } catch (e) {
++                    root.accounts = [];
++                }
++            }
++        }
++    }
++
++    Process {
++        id: actionProc
++
++        stderr: StdioCollector {
++            onStreamFinished: {
++                root.actionStderr = text;
++                root.actionFinished();
++            }
++        }
++        onExited: exitCode => { // qmllint disable signal-handler-parameters
++            root.actionExit = exitCode;
++            root.actionFinished();
++        }
++    }
++
++    // Status for the bar icon: every 30 seconds while connected, every 2
++    // minutes while off, signed out or the service is stopped, and every 3
++    // while tailscaled is starting (at login; at most a minute of that).
++    // Nothing while Tailscale isn't installed: arashos-install-app tells the
++    // shell when it installs or removes it (qs -c caelestia ipc call tailscale
++    // refresh), with a check every 10 minutes in case something else did.
++    property int startingPolls: 0
++    readonly property bool starting: backendState === "Starting" || backendState === "NoState"
++
++    onStartingChanged: {
++        if (!starting)
++            startingPolls = 0;
++    }
++
++    Timer {
++        running: true
++        repeat: true
++        triggeredOnStart: true
++        interval: {
++            if (!root.installed)
++                return 600000;
++            if (root.starting && root.startingPolls < 20)
++                return 3000;
++            return root.running ? 30000 : 120000;
++        }
++        onTriggered: {
++            if (root.starting)
++                root.startingPolls++;
++            root.refresh(false);
++        }
++    }
++
++    IpcHandler {
++        target: "tailscale"
++
++        function refresh(): void {
++            root.refresh(false);
++        }
++    }
++
++    Timer {
++        id: copiedTimer
++
++        interval: 1500
++        onTriggered: root.copied = ""
++    }
++}

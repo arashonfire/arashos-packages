@@ -18,7 +18,7 @@ Its public key is [`arashos-release.asc`](arashos-release.asc). ArashOS systems 
 ## Sources
 
 - `arashos-*`: ArashOS's own packages (GPL-3.0).
-- Everything else is built unchanged from the AUR recipe at the commit pinned in [`aur.lock`](aur.lock) (`https://aur.archlinux.org/<package>.git`), which downloads the upstream source named in that recipe, except for the changes in [`patches/`](patches): `patches/<package>/*.patch`, applied with `patch -p1` to the top of the package's source, with `.1` added to its `pkgrel`.
+- Everything else is built unchanged from the AUR recipe at the commit pinned in [`aur.lock`](aur.lock) (`https://aur.archlinux.org/<package>.git`), which downloads the upstream source named in that recipe, except for the changes in [`patches/`](patches): `patches/<package>/*.patch`, applied with `patch -p1` to the top of the package's source, with `.N` added to its `pkgrel` (`patches/<package>/pkgrel`, default 1), raised whenever the patches change.
 
 Licences are those of each project; `pacman -Qi <package>` shows them.
 
