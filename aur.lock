@@ -1,0 +1,18 @@
+# AUR packages rebuilt into the ArashOS repo (D-1.1), in build order.
+# Each line: <package> <reviewed AUR git commit>. Review the PKGBUILD diff
+# before bumping a commit: AUR recipes are user-submitted.
+# Reviewed 2026-10-10: sources are the projects' official GitHub releases (or
+# git for -git packages); quickshell-git adds a Qt-compat check hook;
+# caelestia-cli prints an informational post_install message.
+qt6-m3shapes-git        f4184f7e028c
+quickshell-git          237fb7f2ddc4
+libcava                 39403443c820
+ttf-rubik-vf            df5b264003f0
+python-materialyoucolor 7a148d4abba3
+app2unit                e1b8a90693ed
+caelestia-cli           a6f5c172fed5
+caelestia-shell         d2c7b31bef70
+vazirmatn-fonts         184a604a0703
+fzf-tab-git             7fde5e4777c6
+# visual-studio-code-bin is not here: Microsoft's licence doesn't allow passing
+# it on, so the ArashOS menu builds it on the user's computer (apps.list).
