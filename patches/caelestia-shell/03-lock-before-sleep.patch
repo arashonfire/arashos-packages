@@ -1,0 +1,129 @@
+Lock screen: up before the computer sleeps
+
+With lockBeforeSleep, the shell asked for the lock screen when logind said
+the computer was about to sleep, but nothing made logind wait for it, so
+it could suspend first and show the desktop for a moment on waking. Hold a
+logind "delay" inhibitor for sleep, and let go of it once the lock screen
+is up (WlSessionLock.secure), right away when it is already up or
+lockBeforeSleep is off; take it again on waking. logind waits at most
+InhibitDelayMaxSec (5 s) if the lock never comes up.
+
+--- a/modules/IdleMonitors.qml
++++ b/modules/IdleMonitors.qml
+@@ -39,8 +39,11 @@
+ 
+     Connections {
+         function onAboutToSleep(): void {
+-            if (GlobalConfig.general.idle.lockBeforeSleep)
++            // Sleep waits until the lock screen is up (onSecureChanged below).
++            if (GlobalConfig.general.idle.lockBeforeSleep && !root.lock.lock.secure)
+                 root.lock.lock.locked = true;
++            else
++                SessionManager.allowSleep();
+         }
+ 
+         function onLockRequested(): void {
+@@ -54,6 +57,15 @@
+         target: SessionManager
+     }
+ 
++    Connections {
++        function onSecureChanged(): void {
++            if (root.lock.lock.secure)
++                SessionManager.allowSleep();
++        }
++
++        target: root.lock.lock
++    }
++
+     Variants {
+         model: GlobalConfig.general.idle.timeouts.values
+ 
+--- a/plugin/src/Caelestia/Services/sessionmanager.cpp
++++ b/plugin/src/Caelestia/Services/sessionmanager.cpp
+@@ -41,6 +41,8 @@
+         k_loginService, k_loginPath, k_loginIface, u"PrepareForSleep"_s, this, SLOT(handlePrepareForSleep(bool)));
+     if (!ok)
+         qCWarning(lcSessionManager) << "Failed to connect to PrepareForSleep signal:" << bus->lastError().message();
++    else
++        delaySleep();
+ 
+     auto sessionMsg = QDBusMessage::createMethodCall(k_loginService, k_loginPath, k_loginIface, u"GetSession"_s);
+     sessionMsg.setArguments({ u"auto"_s });
+@@ -93,6 +95,30 @@
+     return false;
+ }
+ 
++void SessionManager::delaySleep() {
++    if (m_sleepDelay.isValid())
++        return;
++
++    auto bus = getSystemBus();
++    if (!bus)
++        return;
++
++    auto msg = QDBusMessage::createMethodCall(k_loginService, k_loginPath, k_loginIface, u"Inhibit"_s);
++    msg.setArguments({ u"sleep"_s, u"Caelestia"_s, u"Lock the screen first"_s, u"delay"_s });
++    const QDBusReply<QDBusUnixFileDescriptor> reply = bus->call(msg);
++    if (!reply.isValid()) {
++        qCWarning(lcSessionManager) << "Failed to delay sleep for the lock screen:" << reply.error().message();
++        return;
++    }
++    m_sleepDelay = reply.value();
++}
++
++void SessionManager::allowSleep() {
++    // Dropping the last copy of the descriptor closes it, which ends the delay.
++    if (m_aboutToSleep)
++        m_sleepDelay = QDBusUnixFileDescriptor();
++}
++
+ void SessionManager::logout() {
+     callSession(u"Terminate"_s);
+ }
+@@ -188,9 +214,12 @@
+ }
+ 
+ void SessionManager::handlePrepareForSleep(bool sleep) {
++    m_aboutToSleep = sleep;
+     if (sleep) {
+         emit aboutToSleep();
+     } else {
++        // Woken up, or the sleep was cancelled: delay the next one too.
++        delaySleep();
+         emit resumed();
+     }
+ }
+--- a/plugin/src/Caelestia/Services/sessionmanager.hpp
++++ b/plugin/src/Caelestia/Services/sessionmanager.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <qdbusconnection.h>
++#include <qdbusunixfiledescriptor.h>
+ #include <qobject.h>
+ #include <qqmlintegration.h>
+ #include <qstring.h>
+@@ -28,6 +29,10 @@
+ 
+     Q_INVOKABLE bool exec(const QStringList& command);
+ 
++    // While the computer is about to sleep, let it: logind waits for this
++    // (up to its InhibitDelayMaxSec) so the lock screen is up first.
++    Q_INVOKABLE void allowSleep();
++
+ signals:
+     void aboutToSleep();
+     void resumed();
+@@ -45,8 +50,11 @@
+     void call(const QString& path, const QString& iface, const QString& method, const QVariantList& args = {});
+     void callManager(const QString& method);
+     void callSession(const QString& method);
++    void delaySleep();
+ 
+     QString m_sessionPath;
++    QDBusUnixFileDescriptor m_sleepDelay;
++    bool m_aboutToSleep = false;
+ };
+ 
+ } // namespace caelestia::services
