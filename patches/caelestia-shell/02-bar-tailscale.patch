@@ -2,13 +2,15 @@ Bar: a Tailscale status icon and popout
 
 Tailscale's mark in the bar's status icons (taking no space until Tailscale
 is installed), and a popout like the network one: on and off, this computer
-and the tailnet's online devices (click one to copy its IP), switching
-between accounts (Tailscale and a Headscale server), and exit nodes. Signing
-in runs ArashOS's setup in a terminal (arashos-install-app --setup
-tailscale). It reads the status every 30 s while connected, every 2 min
-otherwise, and not at all while Tailscale isn't installed: arashos-install-app
-tells it (qs -c caelestia ipc call tailscale refresh), with a check every
-10 min besides. Modelled on Omarchy's Tailscale bar widget (MIT).
+and the tailnet's online devices (click one to copy its IP; a button sends
+files with Taildrop, through arashos-taildrop, to those that take them),
+switching between accounts (Tailscale and a Headscale server), and exit
+nodes. Signing in runs ArashOS's setup in a terminal (arashos-install-app
+--setup tailscale). It reads the status every 30 s while connected, every
+2 min otherwise, and not at all while Tailscale isn't installed:
+arashos-install-app tells it (qs -c caelestia ipc call tailscale refresh),
+with a check every 10 min besides. Modelled on Omarchy's Tailscale bar
+widget (MIT).
 
 --- a/modules/bar/components/status/TailscaleStatus.qml
 +++ b/modules/bar/components/status/TailscaleStatus.qml
@@ -112,7 +114,7 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
                  popouts: root.popouts
 --- a/modules/bar/popouts/TailscalePopout.qml
 +++ b/modules/bar/popouts/TailscalePopout.qml
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,312 @@
 +pragma ComponentBehavior: Bound
 +
 +import QtQuick
@@ -125,7 +127,7 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
 +import qs.services
 +
 +// Tailscale (ArashOS): on and off, this computer and the tailnet's devices
-+// (click one to copy its IP), accounts and exit nodes.
++// (click one to copy its IP, send it files), accounts and exit nodes.
 +ColumnLayout {
 +    id: root
 +
@@ -270,6 +272,8 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
 +            ip: modelData.ip
 +            exitNodeOption: modelData.exitNodeOption
 +            exitNode: modelData.exitNode
++            canReceive: modelData.canReceive
++            onSendClicked: Tailscale.sendFiles(peer.modelData)
 +            onExitNodeClicked: Tailscale.setExitNode(peer.modelData.exitNode ? null : peer.modelData)
 +        }
 +    }
@@ -305,23 +309,48 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
 +        onClicked: Tailscale.signIn()
 +    }
 +
-+    // A device: click to copy its IP. Exit nodes get a button to route
-+    // this computer's traffic through them.
++    // A device: click to copy its IP. Devices that take files get a button
++    // to send some (Taildrop); exit nodes one to route this computer's
++    // traffic through them.
 +    component Device: Entry {
 +        id: device
 +
 +        property string ip
 +        property bool exitNodeOption
 +        property bool exitNode
++        property bool canReceive
 +
 +        signal exitNodeClicked
++        signal sendClicked
 +
 +        active: exitNode
 +        detail: Tailscale.copied !== "" && Tailscale.copied === ip ? Tr.tr("Copied") : ip
 +        onClicked: Tailscale.copy(ip)
 +
++        Item {
++            visible: device.canReceive
++            Accessible.role: Accessible.Button
++            Accessible.name: Tr.tr("Send files")
++            implicitWidth: implicitHeight
++            implicitHeight: sendIcon.implicitHeight + Tokens.padding.extraSmall
++
++            StateLayer {
++                radius: Tokens.rounding.full
++                onClicked: device.sendClicked()
++            }
++
++            MaterialIcon {
++                id: sendIcon
++
++                anchors.centerIn: parent
++                text: "send"
++            }
++        }
++
 +        StyledRect {
 +            visible: device.exitNodeOption
++            Accessible.role: Accessible.Button
++            Accessible.name: device.exitNode ? Tr.tr("Stop using as exit node") : Tr.tr("Use as exit node")
 +            implicitWidth: implicitHeight
 +            implicitHeight: exitIcon.implicitHeight + Tokens.padding.extraSmall
 +
@@ -420,7 +449,7 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
          }))
 --- a/services/Tailscale.qml
 +++ b/services/Tailscale.qml
-@@ -0,0 +1,279 @@
+@@ -0,0 +1,293 @@
 +pragma Singleton
 +
 +import QtQuick
@@ -447,7 +476,8 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
 +    property string tailnet: ""
 +    property string selfName: ""
 +    property string selfIp: ""
-+    // online peers, sorted by name: {id, name, ip, os, exitNodeOption, exitNode}
++    // online peers, sorted by name: {id, name, ip, dns, os, exitNodeOption,
++    // exitNode, canReceive}
 +    property var peers: []
 +    property int offlineCount: 0
 +    // {id, label, selected}; only read while the popout is open
@@ -477,6 +507,11 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
 +    // peer: an exit node to use, or null to stop using one
 +    function setExitNode(peer: var): void {
 +        run(["tailscale", "set", `--exit-node=${peer ? peer.ip : ""}`]);
++    }
++
++    // Taildrop: pick files and send them (arashos-taildrop says how it went)
++    function sendFiles(peer: var): void {
++        Quickshell.execDetached(["arashos-taildrop", "send", peer.dns || peer.ip]);
 +    }
 +
 +    function copy(text: string): void {
@@ -562,6 +597,12 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
 +        selfName = data.Self ? peerName(data.Self) : "";
 +        selfIp = ipv4(data.Self?.TailscaleIPs ?? data.TailscaleIPs);
 +
++        // Taildrop: the tailnet lets this computer send files, and tailscale
++        // says which devices can take them (TaildropTarget 1); daemons too old
++        // to say: the same owner's devices.
++        const fileSharing = Object.keys(data.Self?.CapMap ?? {}).concat(data.Self?.Capabilities ?? []).includes("https://tailscale.com/cap/file-sharing");
++        const selfUser = data.Self?.UserID;
++
 +        const online = [];
 +        let offline = 0;
 +        for (const [id, p] of Object.entries(data.Peer ?? {})) {
@@ -576,9 +617,11 @@ tells it (qs -c caelestia ipc call tailscale refresh), with a check every
 +                id: id,
 +                name: peerName(p),
 +                ip: ipv4(p.TailscaleIPs),
++                dns: (p.DNSName ?? "").replace(/\.$/, ""),
 +                os: (p.OS ?? "").toLowerCase(),
 +                exitNodeOption: p.ExitNodeOption === true,
-+                exitNode: p.ExitNode === true
++                exitNode: p.ExitNode === true,
++                canReceive: fileSharing && (p.TaildropTarget ? p.TaildropTarget === 1 : p.UserID === selfUser)
 +            });
 +        }
 +        online.sort((a, b) => a.name.localeCompare(b.name));
