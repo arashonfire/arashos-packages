@@ -1,0 +1,54 @@
+Notifications: muting an app
+
+Settings' Notifications page mutes an app: its notifications don't pop up
+and go straight to the list, as with Do not disturb for that app alone;
+critical ones (a battery about to run out, a failed update) still pop up.
+The muted apps are notifications.muted in ArashOS's settings
+(~/.config/arashos/settings.json), a list, read here and again whenever
+the file changes; by the name the app gives (appName).
+
+--- a/services/Notifs.qml
++++ b/services/Notifs.qml
+@@ -19,6 +19,17 @@
+     readonly property list<NotifData> notClosed: list.filter(n => !n.closed)
+     readonly property list<NotifData> popups: list.filter(n => n.popup)
+     property alias dnd: props.dnd
++    // ArashOS: apps muted in Settings (notifications.muted in
++    // ~/.config/arashos/settings.json) don't pop up, unless critical; their
++    // notifications still go in the list.
++    readonly property list<string> muted: {
++        try {
++            const m = JSON.parse(arashosSettings.text())["notifications.muted"];
++            return Array.isArray(m) ? m : [];
++        } catch (e) {
++            return [];
++        }
++    }
+ 
+     property bool loaded
+ 
+@@ -81,6 +92,15 @@
+         reloadableId: "notifs"
+     }
+ 
++    FileView {
++        id: arashosSettings
++
++        path: `${Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config"}/arashos/settings.json`
++        watchChanges: true
++        printErrors: false
++        onFileChanged: reload()
++    }
++
+     NotificationServer {
+         id: server
+ 
+@@ -96,7 +116,7 @@
+             notif.tracked = true;
+ 
+             const comp = notifComp.createObject(root, {
+-                popup: root.shouldShowPopup(),
++                popup: root.shouldShowPopup() && (notif.urgency === NotificationUrgency.Critical || !root.muted.includes(notif.appName)),
+                 notification: notif
+             });
+             root.list = [comp, ...root.list];
