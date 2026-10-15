@@ -1,0 +1,64 @@
+Notifications: Kaman's, where it shows them
+
+Kaman, ArashOS's own shell, is the session's notification server where
+it's installed (shell/notifications in arashos-shell): its pop-ups, its
+list behind the bar's bell, Do not disturb. Only one program may own the
+notification bus name, and whichever starts first would win, so this one
+stays off the bus when arashos-shell's drop-in for arashos-shell.service
+sets ARASHOS_KAMAN_NOTIFICATIONS=1. Caelestia's list, sidebar and lock
+screen then have nothing to show.
+
+--- a/services/Notifs.qml
++++ b/services/Notifs.qml
+@@ -81,25 +81,32 @@ Singleton {
+         reloadableId: "notifs"
+     }
+ 
+-    NotificationServer {
+-        id: server
+-
+-        keepOnReload: false
+-        actionsSupported: true
+-        bodyHyperlinksSupported: true
+-        bodyImagesSupported: true
+-        bodyMarkupSupported: true
+-        imageSupported: true
+-        persistenceSupported: true
+-
+-        onNotification: notif => {
+-            notif.tracked = true;
+-
+-            const comp = notifComp.createObject(root, {
+-                popup: root.shouldShowPopup(),
+-                notification: notif
+-            });
+-            root.list = [comp, ...root.list];
++    // ArashOS: where Kaman shows the notifications (arashos-shell sets
++    // ARASHOS_KAMAN_NOTIFICATIONS=1 for this service), it owns the
++    // notification server and this one stays off the bus.
++    LazyLoader {
++        active: Quickshell.env("ARASHOS_KAMAN_NOTIFICATIONS") !== "1"
++
++        NotificationServer {
++            id: server
++
++            keepOnReload: false
++            actionsSupported: true
++            bodyHyperlinksSupported: true
++            bodyImagesSupported: true
++            bodyMarkupSupported: true
++            imageSupported: true
++            persistenceSupported: true
++
++            onNotification: notif => {
++                notif.tracked = true;
++
++                const comp = notifComp.createObject(root, {
++                    popup: root.shouldShowPopup(),
++                    notification: notif
++                });
++                root.list = [comp, ...root.list];
++            }
+         }
+     }
+ 

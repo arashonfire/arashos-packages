@@ -4,6 +4,7 @@ The pacman repository of [ArashOS](https://github.com/arashonfire), an Arch-base
 
 ```ini
 [arashos]
+SigLevel = Required
 Server = https://github.com/arashonfire/arashos-packages/releases/download/$arch
 ```
 
@@ -18,7 +19,7 @@ Its public key is [`arashos-release.asc`](arashos-release.asc). ArashOS systems 
 ## Sources
 
 - `arashos-*`: ArashOS's own packages (GPL-3.0).
-- Everything else is built unchanged from the AUR recipe at the commit pinned in [`aur.lock`](aur.lock) (`https://aur.archlinux.org/<package>.git`), which downloads the upstream source named in that recipe, except for the changes in [`patches/`](patches): `patches/<package>/*.patch`, applied with `patch -p1` to the top of the package's source, with `.N` added to its `pkgrel` (`patches/<package>/pkgrel`, default 1), raised whenever the patches change.
+- Everything else is built unchanged from the AUR recipe at the commit pinned in [`aur.lock`](aur.lock) (`https://aur.archlinux.org/<package>.git`), which downloads the upstream source named in that recipe (for a `-git` package, the upstream commit in `aur.lock`'s third column, added to its git source as `#commit=`), except for the changes in [`patches/`](patches): `patches/<package>/*.patch`, applied with `patch -p1` to the top of the package's source, with `.N` added to its `pkgrel` (`patches/<package>/pkgrel`, default 1), raised whenever the patches change.
 
 Licences are those of each project; `pacman -Qi <package>` shows them.
 
