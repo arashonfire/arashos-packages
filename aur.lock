@@ -19,4 +19,4 @@ vazirmatn-fonts         184a604a0703
 fzf-tab-git             7fde5e4777c6 24105b15714bfec37989ed5c5b6e60f572253019
 paru                    329be2113c59
 # visual-studio-code-bin is not here: Microsoft's licence doesn't allow passing
-# it on, so the ArashOS menu builds it on the user's computer (apps.list).
+# it on, so App Center builds it on the user's computer (apps.list).
