@@ -18,5 +18,12 @@ quickshell-git          237fb7f2ddc4 4f508be500dea6e5732cc3d50382a0048b17e7b1
 vazirmatn-fonts         184a604a0703
 fzf-tab-git             7fde5e4777c6 24105b15714bfec37989ed5c5b6e60f572253019
 paru                    329be2113c59
+# Reviewed 2026-10-23: wtype-git builds atx/wtype from git with meson (D-6.4.3).
+# Pinned at 82bca82, "Use printable keycodes for literal text": wtype 0.4
+# typed some letters on Backspace's, Tab's and Enter's key codes, which
+# Chromium and Electron apps act on (VS Code lost letters from dictation).
+# Its only change since v0.4 (main.c). Back to Arch's wtype once a release
+# has it.
+wtype-git               ab1311c280c1 82bca82b2b27e3d044c7cd5c22a471c8c60df72e
 # visual-studio-code-bin is not here: Microsoft's licence doesn't allow passing
 # it on, so App Center builds it on the user's computer (apps.list).
