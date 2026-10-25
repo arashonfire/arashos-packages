@@ -25,5 +25,20 @@ paru                    329be2113c59
 # Its only change since v0.4 (main.c). Back to Arch's wtype once a release
 # has it.
 wtype-git               ab1311c280c1 82bca82b2b27e3d044c7cd5c22a471c8c60df72e
+# Reviewed 2026-10-24: sherpa-onnx, Simorgh's voice (D-6.5.3), pinned at
+# 1.13.8, not the AUR's 2.0.0: 2.0.0 dropped espeak-ng, and Kokoro now skips
+# any word missing from its lexicon ("Kaghaz", "Firefox"; see
+# docs/issues/2026-10-24-sherpa-onnx-recipe.md). Its sources are upstream's
+# GitHub tags, each hash the same as upstream's cmake gives; PortAudio comes
+# from hf-mirror.com, the same file as files.portaudio.com. It also makes
+# python-sherpa-onnx, which isn't published. It links Arch's onnxruntime
+# (libonnxruntime.so.1); the recipe asks for a rebuild after onnxruntime
+# upgrades. cargs (by its upstream author, the GitHub tag) is only needed
+# to build it; its recipe checks the tag's tarball by MD5 alone
+# (18f8df23cd38b4d7f8504f4b29eebfe2), and the same file's SHA-256, checked
+# by hand on 2026-10-25, is
+# 0b33379e3d3c8cb3e22f33d3e1a260adcd366970868bc9b7c47237f24188ff25.
+cargs                   50b22f70cbae
+sherpa-onnx             2fbfea719372
 # visual-studio-code-bin is not here: Microsoft's licence doesn't allow passing
 # it on, so App Center builds it on the user's computer (apps.list).
