@@ -6,9 +6,9 @@
 # upstream's changes before bumping that one too.
 # Reviewed 2026-10-10: sources are the projects' official GitHub releases (or
 # git for -git packages); quickshell-git adds a Qt-compat check hook.
-# Reviewed 2026-10-12: paru builds the official GitHub release with cargo
-# (prepare() updates its alpm crates to match the system's libalpm). Rebuild it
-# when Arch bumps libalpm's soname, or it stops starting.
+# Reviewed 2026-10-12: paru builds the official GitHub release with cargo.
+# Rebuild it when Arch bumps libalpm's soname or OpenSSL's, or it stops
+# starting or building.
 # Upstream pinned 2026-10-14 at the commits the published packages were built
 # from: quickshell 4f508be (v0.3.2), fzf-tab 24105b1.
 # 2026-10-15: Caelestia's shell and CLI left (D-5.7), and with them what only
@@ -17,7 +17,13 @@
 quickshell-git          237fb7f2ddc4 4f508be500dea6e5732cc3d50382a0048b17e7b1
 vazirmatn-fonts         184a604a0703
 fzf-tab-git             7fde5e4777c6 24105b15714bfec37989ed5c5b6e60f572253019
-paru                    329be2113c59
+# Reviewed 2026-11-18: paru 2.2.1 (the AUR's f8bb12f, upstream's release of
+# 2026-11-17, source hash as the recipe says). 2.1.0 no longer built: its
+# Cargo.lock pins openssl-sys 0.9.109, which stops at OpenSSL 3, and Arch has
+# 4.1. 2.2.1 pins 0.9.117, which accepts 4.x. The recipe's only other changes:
+# its depends (libssl.so, libcrypto.so, git>=2.40, pacman>=7.1) and no more
+# `cargo update` of the alpm crates in prepare().
+paru                    f8bb12fcd306
 # Reviewed 2026-10-23: wtype-git builds atx/wtype from git with meson (D-6.4.3).
 # Pinned at 82bca82, "Use printable keycodes for literal text": wtype 0.4
 # typed some letters on Backspace's, Tab's and Enter's key codes, which
